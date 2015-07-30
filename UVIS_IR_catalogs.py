@@ -25,7 +25,12 @@ class SECatalogs():
             os.mkdir(topdir)
         # create output directory
         self.outdir = os.path.join(topdir, self.par)
-        os.mkdir(self.outdir)
+        try:
+            os.mkdir(self.outdir)
+        except OSError:
+            print '\n%s already exists.' % self.outdir
+            print '\tPlease remove before continuing.\n'
+            exit()
 
         # config file for convolution thresholds & SExtractor parameters
         self.Config = ConfigParser.ConfigParser()
@@ -171,17 +176,21 @@ class SECatalogs():
 
                 # convolve image
                 convolve(lopsf, hipsf, outker, threshold, highresimg, outname)
-
+                
 
     def single_SE(self, updates):
         '''Run SE in single image mode'''
         wdet = np.where(self.par_info['filt'] == self.detect_filt)
         image = self.par_info['image'][wdet][0]
-        cat = os.path.splitext(image)[0] + '_cat.fits'
-        cat = os.path.join(self.outdir, os.path.basename(cat))
-        seg = os.path.splitext(image)[0] + '_seg.fits'
-        seg = os.path.join(self.outdir, os.path.basename(seg))
-
+#        cat = os.path.splitext(image)[0] + '_cat.fits'
+#        cat = os.path.join(self.outdir, os.path.basename(cat))
+#        seg = os.path.splitext(image)[0] + '_seg.fits'
+#        seg = os.path.join(self.outdir, os.path.basename(seg))
+        cat = '%s_cat.fits' % self.par_info['filt'][wdet][0]
+        cat = os.path.join(self.outdir, cat)
+        seg = '%s_seg.fits' % self.par_info['filt'][wdet][0]
+        seg = os.path.join(self.outdir, seg)
+    
         # get parameters for this filter
         options = self.Config.options(self.detect_filt)
         params = {}
@@ -222,8 +231,10 @@ class SECatalogs():
         for i in range(images.shape[0]):
             image = images[i]
             rms = rmss[i]
-            cat = os.path.splitext(image)[0] + '_cat.fits'
-            cat = os.path.join(self.outdir, os.path.basename(cat))
+#            cat = os.path.splitext(image)[0] + '_cat.fits'
+#            cat = os.path.join(self.outdir, os.path.basename(cat))
+            cat = '%s_cat.fits' % filts[i]
+            cat = os.path.join(self.outdir, cat)
             options = self.Config.options(filts[i])
             params = {}
             for option in options:
