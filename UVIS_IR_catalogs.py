@@ -17,7 +17,15 @@ class SECatalogs():
 
     def __init__(self, par):
         self.par = par
-        self.datadir = os.path.join(self.par, 'DATA/UVIS/IRtoUVIS')
+        self.datadir = os.path.join('..', self.par, 'DATA/UVIS/IRtoUVIS')
+    
+        # check that top-level directory exists for output
+        topdir = '../UVIScatalogs'
+        if os.path.isdir(topdir) is False:
+            os.mkdir(topdir)
+        # create output directory
+        self.outdir = os.path.join(topdir, self.par)
+        os.mkdir(self.outdir)
 
         # config file for convolution thresholds & SExtractor parameters
         self.Config = ConfigParser.ConfigParser()
@@ -73,7 +81,8 @@ class SECatalogs():
         '''
         im,hdr = fits.getdata(image, header=True)
         rms = np.where(im != 0, im, np.nan)
-        output = os.path.splitext(image)[0] + '_nan.fits'
+        tmp = os.path.splitext(image)[0] + '_nan.fits'
+        output = os.path.join(self.outdir, os.path.basename(tmp))
         fits.writeto(output, rms, header=hdr, clobber=True)
         return output
 
@@ -93,7 +102,7 @@ class SECatalogs():
              ParXXX/DATA/UVIS/IRtoUVIS/FYYY_UVIS_rms.fits
         '''
         images = glob(os.path.join(self.datadir, 'F*_UVIS_sci.fits'))
-        
+
         # dictionary of zero points
         zps = self.get_zp(images[0])
 
@@ -105,7 +114,8 @@ class SECatalogs():
 
             # clean image for convolution
             print 'Cleaning %s' % os.path.basename(image)
-            image_cln = os.path.splitext(image)[0] + '_cln.fits'
+            tmp = os.path.splitext(image)[0] + '_cln.fits'
+            image_cln = os.path.join(self.outdir, os.path.basename(tmp))
             clean_image(image, image_cln)
 
             # replace zeros with NaNs in rms images
@@ -144,7 +154,7 @@ class SECatalogs():
                 hipsf = '%s_psf.fits' % self.par_info['filt'][i]
 
                 # name of kernel to be created by psfmatch for convolution
-                outker = os.path.join(self.datadir, 'ker_%sto%s.fits'%(f, df))
+                outker = os.path.join(self.outdir, 'ker_%sto%s.fits'%(f, df))
 
                 # low freq threshold in frac of total input image 
                 # spectrum power for filtering option "replace"
@@ -156,7 +166,7 @@ class SECatalogs():
                 highresrms = self.par_info['rms'][i]
 
                 # filename of output, convolved image
-                outname = os.path.join(self.datadir, '%s_convto%s.fits' % 
+                outname = os.path.join(self.outdir, '%s_convto%s.fits' % 
                                         (self.par_info['filt'][i], df))
 
                 # convolve image
@@ -168,7 +178,9 @@ class SECatalogs():
         wdet = np.where(self.par_info['filt'] == self.detect_filt)
         image = self.par_info['image'][wdet][0]
         cat = os.path.splitext(image)[0] + '_cat.fits'
+        cat = os.path.join(self.outdir, os.path.basename(cat))
         seg = os.path.splitext(image)[0] + '_seg.fits'
+        seg = os.path.join(self.outdir, os.path.basename(seg))
 
         # get parameters for this filter
         options = self.Config.options(self.detect_filt)
@@ -211,6 +223,7 @@ class SECatalogs():
             image = images[i]
             rms = rmss[i]
             cat = os.path.splitext(image)[0] + '_cat.fits'
+            cat = os.path.join(self.outdir, os.path.basename(cat))
             options = self.Config.options(filts[i])
             params = {}
             for option in options:
