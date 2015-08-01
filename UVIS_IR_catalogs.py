@@ -121,7 +121,7 @@ class SECatalogs():
             print 'Cleaning %s' % os.path.basename(image)
             tmp = os.path.splitext(image)[0] + '_cln.fits'
             image_cln = os.path.join(self.outdir, os.path.basename(tmp))
-            clean_image(image, image_cln)
+#            clean_image(image, image_cln)
 
             # replace zeros with NaNs in rms images
             rms_0 = image.split('_sci.fits')[0] + '_rms.fits'
@@ -175,17 +175,13 @@ class SECatalogs():
                                         (self.par_info['filt'][i], df))
 
                 # convolve image
-                convolve(lopsf, hipsf, outker, threshold, highresimg, outname)
+#                convolve(lopsf, hipsf, outker, threshold, highresimg, outname)
                 
 
     def single_SE(self, updates):
         '''Run SE in single image mode'''
         wdet = np.where(self.par_info['filt'] == self.detect_filt)
         image = self.par_info['image'][wdet][0]
-#        cat = os.path.splitext(image)[0] + '_cat.fits'
-#        cat = os.path.join(self.outdir, os.path.basename(cat))
-#        seg = os.path.splitext(image)[0] + '_seg.fits'
-#        seg = os.path.join(self.outdir, os.path.basename(seg))
         cat = '%s_cat.fits' % self.par_info['filt'][wdet][0]
         cat = os.path.join(self.outdir, cat)
         seg = '%s_seg.fits' % self.par_info['filt'][wdet][0]
@@ -213,26 +209,36 @@ class SECatalogs():
             args.append(key)
             args.append(value)
         # run SE
-        subprocess.check_call(args) 
+#        subprocess.check_call(args) 
+        print image
+        print args
+        print
 
  
     def dual_SE(self, updates):
         '''Run SE in dual image mode'''
+        # get filter number for filenames
+        check = re.search('\d+', self.detect_filt)
+        df = check.group(0)
+
         wdet = np.where(self.par_info['filt'] == self.detect_filt)
 
         # run SE on all images except detection image
         wphot = np.where(self.par_info['filt'] != self.detect_filt)
         filts = self.par_info['filt'][wphot]
-        images = self.par_info['image'][wphot]
+        images = []
+        for i in range(filts.shape[0]):
+            images.append(os.path.join(self.outdir, '%s_convto%s.fits' % 
+                                (self.par_info['filt'][wphot][i], df)))
+
+        #images = self.par_info['image'][wphot]
         rmss = self.par_info['rms'][wphot]
         exptimes = self.par_info['exptime'][wphot]
         zps = self.par_info['zp'][wphot]
 
-        for i in range(images.shape[0]):
+        for i in range(len(images)):
             image = images[i]
             rms = rmss[i]
-#            cat = os.path.splitext(image)[0] + '_cat.fits'
-#            cat = os.path.join(self.outdir, os.path.basename(cat))
             cat = '%s_cat.fits' % filts[i]
             cat = os.path.join(self.outdir, cat)
             options = self.Config.options(filts[i])
@@ -258,7 +264,10 @@ class SECatalogs():
             for key,value in params.iteritems():
                 args.append(key)
                 args.append(value)
-            subprocess.check_call(args)
+#            subprocess.check_call(args)
+            print image
+            print args
+            print
 
 
     def __str__(self):
