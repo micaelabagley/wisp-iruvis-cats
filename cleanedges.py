@@ -7,12 +7,17 @@ from astropy.convolution import Gaussian2DKernel,convolve
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 
-def clean_image(image, output, check=False, showGauss=False):
+def clean_image(image, output, cln_by_wht=True, whtim=None, check=False, showGauss=False):
     '''Cleans edges of an image. Also works for images with chip gaps.
        Replaces edges and chip gaps with random noise generated 
        from the distribution of noise in the image.
 
        Based on cleanedges_general.pro written by Marc Rafelski
+    
+       Addition:
+           Set cln_by_wht to also replace pixels with 0 in weight
+           image with random noise. This removes bad pixels before
+           convolution
     '''
     drz,hdr = fits.getdata(image, header=True)
 
@@ -56,8 +61,16 @@ def clean_image(image, output, check=False, showGauss=False):
         plt.plot(bincens, gaussfunc(bincens, *popt), 'k', linewidth=2)
         plt.show()
 
-    # replace edges with random noise in the image
-    bad = np.where((filt != 0) & (filt != 1))
+    if cln_by_wht:
+        if whtim is None:
+            print '\nNo weight image provided\n'
+            exit()
+        wht = fits.getdata(whtim)
+        # replace edges and bad pixels with random noise in the image
+        bad = np.where(((filt != 0) & (filt != 1)) | (filt != 0) & (wht == 0))
+    else:
+        # replace edges with random noise in the image
+        bad = np.where((filt != 0) & (filt != 1))
 
     # random numbers with mean of 0 and sigma of 1*sig
     noise = np.random.normal(0, 1, drz[bad].shape[0])

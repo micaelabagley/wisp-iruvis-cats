@@ -24,14 +24,15 @@ def zeropadfits(smfits, bigfits, padfits):
     imcopy(smfits, padfits+croprange)
 
 
-def convolve(lopsf, hipsf, outker, threshold, highresimg, outname):
+def convolve(lopsf, hipsf, outker, threshold, highresimg, outname, comp_kernel):
     '''Match the higher-res psf to the lower-res psf and 
     ### note for optical and UV, a threshold of 0.14 was found to be ideal.
     ### for two IR ones, a threshold of 0.03 seemed to work better. 
     '''
-    # compute the psf matching function and save it to outker
-    psfmatch(hipsf, lopsf, hipsf, outker, convolution='psf',
-             background='none', threshold=threshold)
+    if comp_kernel is True:
+        # compute the psf matching function and save it to outker
+        psfmatch(hipsf, lopsf, hipsf, outker, convolution='psf',
+                 background='none', threshold=threshold)
 
     # read in kernel
     k = fits.getdata(outker)

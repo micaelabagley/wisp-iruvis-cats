@@ -7,6 +7,16 @@ par is the ParID and can include any text (Par123, par123, field123,
 123, etc) as it only reads the numbers
 
 
+export PATH="${PATH}:$HOME/[pathtoscripts]/wisp-iruvis-cats/"
+export PYTHONPATH=$PYTHONPATH:$HOME/[pathtoscripts]/wisp-iruvis-cats/
+
+# 1. need to convolve images where bad pixels are removed
+# 2. need to run SE in dual image mode for all filters
+#       - F110W: for detection, we remove all problem pixels from RMS maps
+#           (replace all pixels > 0.01 or something)
+#       - for analysis, leave bad pixels in
+#   do not convolve rms maps
+
 # REQUIREMENTS
 numpy
 scipy
