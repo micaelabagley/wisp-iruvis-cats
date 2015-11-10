@@ -90,7 +90,23 @@ def check_conv_phot(origcat, newcat):
     plt.tight_layout()
     plt.show()
     plt.savefig(os.path.join(os.path.dirname(newcat), 'check_conv_phot.pdf'))
-                    
+    
+
+def aperture(x, y, xc, yc, radius=0.0, a=0.0, b=0.0, ap='circle'):
+    """Identify pixels inside a circular or elliptical aperture"""
+    # get x and y vectors of image
+    y,x = np.ogrid[:im.shape[0], :im.shape[1]]
+    # distance of every pixel from star's position
+    if ap = 'circle':
+        r2 = (x - xc)**2 + (y - yc)**2
+        # find all pixels inside a circular aperture
+        mask = r2 <= (radius - 0.5)**2
+    elif ap == 'ellipse':
+        r2 = ((x - xc) / a)**2 + ((y - yc) / b)**2
+        # find all pixels inside an elliptical aperture
+        mask = r2 <= 1.
+    return mask
+
 
 def calc_errors(zeropoint, exptime, bckthick):
     """ """
@@ -100,6 +116,17 @@ def calc_errors(zeropoint, exptime, bckthick):
     rms = rms * exptime
     
 
+    if phot == 'iso':
+        # area in pixels
+        area = isoarea
+    elif phot == 'aper':
+        area = np.pi * rad**2
+    elif phot == 'auto':
+        area = np.pi * a_im * b_im
+
+
+
+    
 
 # PROBLEM WITH ERRORS IN IR IMAGES  - CALCULATE MYSELF?
 # FIX SE parameters for getting all WISP objects and correct DEBLENDING
