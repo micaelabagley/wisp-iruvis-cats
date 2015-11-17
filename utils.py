@@ -92,43 +92,84 @@ def check_conv_phot(origcat, newcat):
     plt.savefig(os.path.join(os.path.dirname(newcat), 'check_conv_phot.pdf'))
     
 
-def aperture(x, y, xc, yc, radius=0.0, a=0.0, b=0.0, ap='circle'):
+def aperture(x, y, cat, objid, radius=0.0, ap='circle'):
     """Identify pixels inside a circular or elliptical aperture"""
-    # get x and y vectors of image
-    y,x = np.ogrid[:im.shape[0], :im.shape[1]]
     # distance of every pixel from star's position
-    if ap = 'circle':
+    xc = cat['x_image'][objid]
+    yc = cat['y_image'][objid]
+
+    if ap == 'circle':
         r2 = (x - xc)**2 + (y - yc)**2
         # find all pixels inside a circular aperture
-        mask = r2 <= (radius - 0.5)**2
+        #mask = r2 <= (radius + 0.5)**2
+        mask = np.where(r2 <= (radius+0.5)**2)
+
     elif ap == 'ellipse':
-        r2 = ((x - xc) / a)**2 + ((y - yc) / b)**2
+        cxx = cat['cxx_image'][objid]
+        cxy = cat['cxy_image'][objid]
+        cyy = cat['cyy_image'][objid]
+        r2 = cxx*(x - xc)**2 + cxy*(x - xc)*(y - yc) + cyy*(y - yc)**2
         # find all pixels inside an elliptical aperture
-        mask = r2 <= 1.
+        #mask = r2 <= 3.5**2
+        mask = np.where(r2 <= 3.5**2)
+
     return mask
 
 
-def calc_errors(zeropoint, exptime, bckthick):
-    """ """
-    # convert zeropoint, image, and rms map from e-/s to e-
-    zpt = zeropoint + 2.5*np.log10(exptime)
-    im = im * exptime
-    rms = rms * exptime
+def calc_errors(cat, rmsfile, expt, segfile=None, radius=0.0, phot='AUTO'):
+    """
+       SE flux uncertainties:
+         sqrt(A * sig_i^2 + F/g)
+         A = area of aperture
+         sig = average sky value
+         F = flux
+         g = gain
+       
+    """
+    objids = cat['NUMBER']
+    flux = cat['FLUX_%s'%phot]
+    eflux = cat['FLUXERR_%s'%phot]
+    rms = fits.getdata(rmsfile)
+
+    # get x and y vectors of image
+    y,x = np.ogrid[:rms.shape[0], :rms.shape[1]]
+    
+    # number of apertures
+    try:
+        nap = flux.shape[1]
+    except IndexError:
+        nap = 1
+
+    # circular aperture sizes
+    aps = np.array([10, 15, 20, 25, 30]) / 2.
+
+    err = np.zeros((eflux.shape[0],nap), dtype=float)
+    for i in range(eflux.shape[0]):
+        for j in range(nap):
+            # only need to recalculate for objects that are affected
+            if eflux[i,j] < 1000.:
+                err[i,j] = eflux[i,j]
+            else:
+                if phot == 'ISO':
+                    # pixels corresponding to aperture
+                    seg = fits.getdata(segfile)
+                    pix = np.where(seg == objid)
+    
+                elif phot == 'APER':
+                    pix = aperture(x, y, cat, objid, radius=aps[j]
+    
+                elif phot == 'AUTO':
+                    pix = aperture(x, y, cat, objid, ap='ellipse')
+
+                sky = rms[pix]
+                # remove bad pixels from error consideration
+                goodsky = sky[sky != 1.e10]
+                npix = goodsky.shape[0]
+                skyvar = np.std(goodsky)**2
+                err[i,j] = np.sqrt(npix * skyvar + flux[i,j]/float(expt))
+
     
 
-    if phot == 'iso':
-        # area in pixels
-        area = isoarea
-    elif phot == 'aper':
-        area = np.pi * rad**2
-    elif phot == 'auto':
-        area = np.pi * a_im * b_im
-
-
-
-    
-
-# PROBLEM WITH ERRORS IN IR IMAGES  - CALCULATE MYSELF?
 # FIX SE parameters for getting all WISP objects and correct DEBLENDING
 # FINISH CODE TO CHECK PHOTOMETRY AND PUT AS AN OPTION
 
