@@ -338,13 +338,12 @@ class SECatalogs():
         for phot in ['ISO', 'AUTO', 'APER']: # 'PETRO'
             # fix errors
             w110 = np.where(par_info['filt'] == 'F110W')
-            new_fluxerr = calc_errors(t, self.par_info['rms'][w110],
-                                      self.par_info['exptime'][w110], phot=phot,
-                                      segfile=os.path.join(self.outdir,
-                                                           'F110W_seg.fits'))
+            eflux = calc_errors(t, self.par_info['rms'][w110],
+                        self.par_info['exptime'][w110], phot=phot,
+                        segfile=os.path.join(self.outdir,'F110W_seg.fits'))
 
-            t['FLUXERR_%s'%phot] = new_fluxerr
-            HERE
+            t['FLUXERR_%s'%phot] = eflux
+            t['MAGERR_%s'%phot] = eflux/t['FLUX_%s'%phot] * 2.5/np.log(10)
 
             # rename F110 photometry columns
             t.rename_column('FLUX_%s'%phot, 'FLUX_%s_F110W'%phot)
@@ -366,13 +365,22 @@ class SECatalogs():
             filtstr = os.path.basename(cat).split('_')[0]
             for j,phot in enumerate(['ISO', 'AUTO', 'APER']):
                 index = (i*12 + 2) + (j * 4)
+
+                # fix errors
+                wfilt = np.where(par_infp['filt'] == filtstr)
+                eflux = calc_errors(d, self.par_info['rms'][wfilt],
+                            self.par_info['exptime'][wfilt], phot=phot
+                            segfile=os.path.join(self.outdir,'F110W_seg.fits'))
+                emag = eflux / d['FLUX_%s'%phot][match] * 2.5/np.log(10)
+            
                 t.add_columns([Column(data=d['FLUX_%s'%phot][match], 
                                   name='FLUX_%s_%s'%(phot,filtstr)),
                                Column(data=d['FLUXERR_%s'%phot][match],
                                   name='FLUXERR_%s_%s'%(phot,filtstr)),
                                Column(data=d['MAG_%s'%phot][match],
                                   name='MAG_%s_%s'%(phot,filtstr)),
-                               Column(data=d['MAGERR_%s'%phot][match],
+                               Column(data=emag, # emag[match]?
+                              # Column(data=d['MAGERR_%s'%phot][match],
                                   name='MAGERR_%s_%s'%(phot,filtstr))], 
                                indexes=[index, index, index, index])
 

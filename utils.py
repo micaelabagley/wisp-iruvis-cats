@@ -168,6 +168,7 @@ def calc_errors(cat, rmsfile, expt, segfile=None, radius=0.0, phot='AUTO'):
                 skyvar = np.std(goodsky)**2
                 err[i,j] = np.sqrt(npix * skyvar + flux[i,j]/float(expt))
 
+    return err
     
 
 # FIX SE parameters for getting all WISP objects and correct DEBLENDING
