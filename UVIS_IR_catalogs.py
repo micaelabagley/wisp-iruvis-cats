@@ -1,4 +1,5 @@
 #! /usr/bin/env python
+import timing
 import argparse
 import os
 import inspect
@@ -13,7 +14,7 @@ from datetime import datetime
 
 from cleanedges import clean_image
 from convolvebypsf import convolve
-#from utils import *
+from utils import *
 
 class SECatalogs():
 
@@ -66,7 +67,7 @@ class SECatalogs():
             
         # get list of images, filters, rms maps, exptimes and 
         # zero points for this field
-        self.par_info = self.setup(SE_only)
+        self.par_info = self.setup(SE_only, no_conv)
 
 
     def get_zp(self, image):
@@ -139,7 +140,7 @@ class SECatalogs():
         return fits.getheader(ir_images[-1])['FILTER']
 
 
-    def setup(self, SE_only):
+    def setup(self, SE_only, no_conv):
         """Return lists of all images and filters used in this Par.
            We will use the unrotated images for use with a single psf
            Image filenames:
@@ -152,8 +153,9 @@ class SECatalogs():
         zps = self.get_zp(images[0])
 
         # build table
-        t = Table(data=None, names=['filt','image','rms','wht','exptime','zp'],
-                  dtype=['S10', 'S60', 'S60', 'S60', float, float])
+        t = Table(data=None, 
+                  names=['filt','image','convim','rms','wht','exptime','zp'],
+                  dtype=['S10', 'S60', 'S60', 'S60', 'S60', float, float])
         for image in images:
             filt = fits.getheader(image)['FILTER']
 
@@ -165,8 +167,18 @@ class SECatalogs():
             image_cln = os.path.join(self.outdir, os.path.basename(tmp))
             if SE_only is False:
                 print 'Cleaning %s' % os.path.basename(image)
-                #clean_image(image, image_cln, cln_by_wht=False, whtim=wht)
-                clean_image(image, image_cln, cln_by_wht=True, whtim=wht)
+                if no_conv:
+                    clean_image(image, image_cln, cln_by_wht=False, whtim=wht)
+                else:
+                    clean_image(image, image_cln, cln_by_wht=True, whtim=wht)
+            
+            # names of convolved images
+            if filt == self.reddest_filt:
+                convim = image_cln
+            else:
+                check = re.search('\d+', self.reddest_filt)
+                rf = check.group(0)
+                convim = os.path.join(self.outdir,'%s_convto%s.fits'%(filt,rf))
 
             # replace zeros with 1.e9 in rms analysis maps
             rms0 = image.split('_sci.fits')[0] + '_rms.fits'
@@ -184,13 +196,13 @@ class SECatalogs():
             exptime = fits.getheader(image)['EXPTIME']
             zp = zps[filt]
 
-            t.add_row([filt, image_cln, rms_analysis, wht, exptime, zp])
+            t.add_row([filt, image_cln, convim, rms_analysis, wht, exptime, zp])
         # set detection RMS map
         self.detect_rms = rms_detect
         return t
 
 
-    def convolve_images(self, compute_kernel):
+    def convolve_images(self, compute_kernel, SE_only):
         """Convolve each image to the psf of the reddest image.
 
            IRAF's psfmatch first computes the psf matching function
@@ -209,6 +221,12 @@ class SECatalogs():
                 # get filter number for filenames
                 check = re.search('\d+', self.par_info['filt'][i])
                 f = check.group(0)
+
+                # filename of output, convolved image
+                outname = self.par_info['convim'][i]
+
+                if SE_only:
+                    continue
 
                 # setup parameters for image convolution
                 # filename of higher res psf
@@ -233,10 +251,6 @@ class SECatalogs():
                 # also have to convolve the rms maps
                 highresrms = self.par_info['rms'][i]
 
-                # filename of output, convolved image
-                outname = os.path.join(self.outdir, '%s_convto%s.fits' % 
-                                        (self.par_info['filt'][i], rf))
-
                 # convolve image
                 print 'Convolving %s to %s' % (os.path.basename(highresimg), 
                                                self.reddest_filt)
@@ -248,26 +262,19 @@ class SECatalogs():
         """Run SE in dual image mode"""
         filts = self.par_info['filt']
 
-        # check filter number for filenames
-        check = re.search('\d+', self.reddest_filt)
-        rf = check.group(0)
-
-        # find detection image convolution image, and all others
-        wdet = np.where(self.par_info['filt'] == self.detect_filt)
-        wred = np.where(self.par_info['filt'] == self.reddest_filt)
-
         # get list of images, all of which will be run in dual image mode
-        # image names depend on whether SE is run on convolved or 
-        # unconvolved images
-        if no_conv is False:
-            images = ['%s_convto%s.fits'%(x,rf) for x in filts]
-            images[images == '%s_convto%s.fits'%(self.detect_filt,rf)] = \
-                        self.par_info['image'][wred]
-        else:
+        if no_conv:
             images = self.par_info['image']
+        else:
+            images = self.par_info['convim']
+
+        # detection image
+        wdet = np.where(self.par_info['filt'] == self.detect_filt)
+        detim = images[wdet][0]
 
         for i in range(len(images)):
             image = images[i]
+
             rms = self.par_info['rms'][i]
             cat = os.path.join(self.outdir, '%s_cat.fits' % filts[i])   
             options = self.Config.options(filts[i])
@@ -277,7 +284,8 @@ class SECatalogs():
             # detection parameters should be from detection image section
             for option in ['-detect_minarea', '-detect_thresh', '-filter',\
                            '-filter_name', '-deblend_nthresh', \
-                           '-deblend_mincont', '-back_filtersize']:
+                           '-deblend_mincont', '-back_filtersize', \
+                           '-thresh_type', '-back_size']:
                 params[option] = self.Config.get(self.detect_filt, option)
 
             # update rms maps for dual image mode
@@ -295,7 +303,7 @@ class SECatalogs():
             params['-mag_zeropoint'] = '%.4f' % self.par_info['zp'][i]
             params['-catalog_name'] = cat
             # segmentation map, filtered and background images
-            if i == 0:
+            if i == wdet[0][0]:
                 seg = os.path.join(self.outdir, '%s_seg.fits' % filts[i])   
                 bck = os.path.join(self.outdir, '%s_bck.fits' % filts[i])   
                 fil = os.path.join(self.outdir, '%s_fil.fits' % filts[i])   
@@ -309,12 +317,16 @@ class SECatalogs():
             for key,value in params.iteritems():
                 args.append(key)
                 args.append(value)
-            print args
             subprocess.check_call(args)
 
 
-    def join_cats(self, check_phot):
+    def join_cats(self, no_conv, check_phot):
         """ """
+        if no_conv:
+            images = self.par_info['image']
+        else:
+            images = self.par_info['convim']
+
         # read in F110W catalog (all UVIS fields have F110W)
         f110cat = os.path.join(self.outdir, 'F110W_cat.fits')
         f = fits.open(f110cat)
@@ -329,21 +341,24 @@ class SECatalogs():
         refdata = np.genfromtxt(c)
         idx,separc = match_cats(uvisdata['x_world'], uvisdata['y_world'], 
                                 refdata[:,7], refdata[:,8])
-        match = (separc.value*3600. <= 0.1)
+        match = (separc.value*3600. <= 0.2)
         # d['x_world'][match]
         # dref[:,7][idx[match]]
-     
         t = Table(uvisdata[match])  
-        # rename F110 photometry columns
+     
+        print
         for phot in ['ISO', 'AUTO', 'APER']: # 'PETRO'
             # fix errors
-            w110 = np.where(par_info['filt'] == 'F110W')
-            eflux = calc_errors(t, self.par_info['rms'][w110],
-                        self.par_info['exptime'][w110], phot=phot,
-                        segfile=os.path.join(self.outdir,'F110W_seg.fits'))
+            w110 = np.where(self.par_info['filt'] == 'F110W')
+            print 'fix errors for F110W, %s' % phot
+            eflux,emag = calc_errors(t, images[w110][0], 
+                                self.par_info['rms'][w110][0],
+                                os.path.join(self.outdir,'F110W_seg.fits'), 
+                                self.par_info['exptime'][w110][0], phot=phot)
 
+            #eflux=eflux.reshape(t['FLUXERR_%s'%phot].shape)
             t['FLUXERR_%s'%phot] = eflux
-            t['MAGERR_%s'%phot] = eflux/t['FLUX_%s'%phot] * 2.5/np.log(10)
+            t['MAGERR_%s'%phot] = emag
 
             # rename F110 photometry columns
             t.rename_column('FLUX_%s'%phot, 'FLUX_%s_F110W'%phot)
@@ -351,58 +366,70 @@ class SECatalogs():
             t.rename_column('MAG_%s'%phot, 'MAG_%s_F110W'%phot)
             t.rename_column('MAGERR_%s'%phot, 'MAGERR_%s_F110W'%phot)
             
-
         # add column of indices from fin_F110.cat 
         t.add_column(Column(data=refdata[:,1][idx[match]], name='WISP_NUMBER'),
                      index=0)
+        
         # add in photometry from other catalogs
         for i, cat in enumerate(cats):
             i += 1
             print cat
-            f = fits.open(cat)
-            d = f[1].data
-            f.close()
+            f = fits.getdata(cat)
+            d = f[match]
             filtstr = os.path.basename(cat).split('_')[0]
             for j,phot in enumerate(['ISO', 'AUTO', 'APER']):
                 index = (i*12 + 2) + (j * 4)
 
-                # fix errors
-                wfilt = np.where(par_infp['filt'] == filtstr)
-                eflux = calc_errors(d, self.par_info['rms'][wfilt],
-                            self.par_info['exptime'][wfilt], phot=phot
-                            segfile=os.path.join(self.outdir,'F110W_seg.fits'))
-                emag = eflux / d['FLUX_%s'%phot][match] * 2.5/np.log(10)
-            
-                t.add_columns([Column(data=d['FLUX_%s'%phot][match], 
+                # fix errors - UVIS errors are fine
+                if filtstr == 'F160W':
+                    w160 = np.where(self.par_info['filt'] == 'F160W')
+                    print 'fix errors for %s, %s' % (filtstr, phot)
+                    eflux,emag = calc_errors(d, images[w160][0],
+                                    self.par_info['rms'][w160][0],
+                                    os.path.join(self.outdir,'F110W_seg.fits'), 
+                                    self.par_info['exptime'][w160][0], 
+                                    phot=phot)
+                    d['FLUXERR_%s'%phot] = eflux
+                    d['MAGERR_%s'%phot] = emag
+
+                t.add_columns([Column(data=d['FLUX_%s'%phot], 
                                   name='FLUX_%s_%s'%(phot,filtstr)),
-                               Column(data=d['FLUXERR_%s'%phot][match],
+                               Column(data=d['FLUXERR_%s'%phot],
                                   name='FLUXERR_%s_%s'%(phot,filtstr)),
-                               Column(data=d['MAG_%s'%phot][match],
+                               Column(data=d['MAG_%s'%phot],
                                   name='MAG_%s_%s'%(phot,filtstr)),
-                               Column(data=emag, # emag[match]?
-                              # Column(data=d['MAGERR_%s'%phot][match],
+                               Column(data=d['MAGERR_%s'%phot], 
                                   name='MAGERR_%s_%s'%(phot,filtstr))], 
                                indexes=[index, index, index, index])
 
         # sort by WISP number
         t.sort(['WISP_NUMBER'])
+        output = os.path.join(self.outdir, '%s_cat.fits'%self.par)
+        t.write(output, format='fits')
+        """
         hdu0 = fits.PrimaryHDU()
         hdu1 = fits.BinTableHDU(np.array(t))
         hdulist = fits.HDUList([hdu0, hdu1])
         output = os.path.join(self.outdir, '%s_cat.fits'%self.par)
         hdulist.writeto(output, clobber=True)
+        """
 
         # make region file
-        region_wcs(os.path.splitext(output)[0]+'.reg', np.array(t))
+        region_wcs(os.path.splitext(output)[0]+'.reg', 
+                   t['X_WORLD'], t['Y_WORLD'], t['A_WORLD'], t['B_WORLD'],
+                   t['THETA_WORLD'], t['NUMBER'])
         # make region file of original F110W catalog
-# XXX NEEW TO CONSTRUCT FITS TABLE EQUIVALENT OF REFDATA (FROM GENFROMTXT) XXX
-        #region_wcs(os.path.join(self.outdir, 'F110W_orig.reg'), refdata,
-        #           color='red')
+        region_wcs(os.path.join(self.outdir, 'F110W_orig.reg'), 
+                   refdata[:,7], refdata[:,8], refdata[:,9], refdata[:,10],
+                   refdata[:,11], refdata[:,1], color='red')
 
         if check_phot is True:
             print c
             print f110cat
-            check_conv_phot(c, f110cat)
+            check_conv_phot(c, output, 'F110W')
+            c = os.path.join(self.datadir,self.par,'DATA/DIRECT_GRISM/fin_F160.cat')
+            print c
+            check_conv_phot(c, output, 'F160W')
 
 
     def __str__(self):
@@ -412,9 +439,10 @@ class SECatalogs():
         ret_str += 'Detection filter:   %s\nConvolution filter: %s\n\n' % \
                     (self.detect_filt, self.reddest_filt)
         for i in range(len(self.par_info['filt'])):
-            ret_str += '%s\n   Image:   %s\n   Rms:     %s\n   Exptime: %.1f\n   Zp:      %.4f\n' % \
+            ret_str += '%s\n   Images:   %s, %s\n   Rms:     %s\n   Exptime: %.1f\n   Zp:      %.4f\n' % \
                 (self.par_info['filt'][i], 
                  os.path.basename(self.par_info['image'][i]),
+                 os.path.basename(self.par_info['convim'][i]),
                  os.path.basename(self.par_info['rms'][i]),
                  self.par_info['exptime'][i], self.par_info['zp'][i])
         return ret_str
@@ -448,13 +476,12 @@ def main():
 
     # clean images
     Cat = SECatalogs(par, args.datadir, args.topdir, args.SE_only, args.no_conv)
-    print Cat
 
     # convolve all images to reddest image psf 
-    if args.SE_only is False:
-        if args.no_conv is False:
-            Cat.convolve_images(args.compute_kernel)
-    
+    if args.no_conv is False:
+        Cat.convolve_images(args.compute_kernel, args.SE_only)
+    print Cat
+
     # run SExtractor on all image in dual image mode
     #   F110W is used for detection, with the detection RMS map
     #   The analysis image (including F110W) is run with analysis RMS
@@ -463,7 +490,7 @@ def main():
     Cat.run_SE(updates, args.no_conv)
 
     # match to original F110W catalog and join all photometry into output
-    Cat.join_cats(args.check_phot)
+    Cat.join_cats(args.no_conv, args.check_phot)
     
 
 
